@@ -143,28 +143,56 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
       // Dynamic wide scan box that prevents cutting off 1D barcode quiet zones
       const config = {
-        fps: 25,
+        fps: 20,
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-          const width = Math.min(viewfinderWidth - 12, Math.max(260, Math.floor(viewfinderWidth * 0.94)));
-          const height = Math.min(viewfinderHeight - 12, Math.max(160, Math.floor(viewfinderHeight * 0.88)));
+          // Safeguard: ensure dimensions are always positive and non-zero
+          const w = viewfinderWidth && viewfinderWidth > 50 ? viewfinderWidth : 320;
+          const h = viewfinderHeight && viewfinderHeight > 50 ? viewfinderHeight : 240;
+          const width = Math.max(180, Math.floor(w * 0.9));
+          const height = Math.max(120, Math.floor(h * 0.82));
           return { width, height };
         },
       };
 
-      await html5QrCode.start(
-        {
-          facingMode: { ideal: facingMode },
-          width: { min: 640, ideal: 1280 },
-          height: { min: 480, ideal: 720 },
-        },
-        config,
-        (decodedText) => {
-          if (isComponentMounted.current) {
-            handleBarcodeDetected(decodedText);
-          }
-        },
-        () => {}
-      );
+      try {
+        await html5QrCode.start(
+          { facingMode: facingMode },
+          config,
+          (decodedText) => {
+            if (isComponentMounted.current) {
+              handleBarcodeDetected(decodedText);
+            }
+          },
+          () => {}
+        );
+      } catch (firstErr: any) {
+        console.warn('First camera attempt failed, trying camera ID fallback...', firstErr);
+        const cameras = await Html5Qrcode.getCameras().catch(() => []);
+        if (cameras && cameras.length > 0) {
+          const selectedCam =
+            facingMode === 'environment'
+              ? cameras.find(
+                  (c) =>
+                    c.label.toLowerCase().includes('back') ||
+                    c.label.toLowerCase().includes('rear') ||
+                    c.label.toLowerCase().includes('environment')
+                ) || cameras[cameras.length - 1]
+              : cameras[0];
+
+          await html5QrCode.start(
+            selectedCam.id,
+            config,
+            (decodedText) => {
+              if (isComponentMounted.current) {
+                handleBarcodeDetected(decodedText);
+              }
+            },
+            () => {}
+          );
+        } else {
+          throw firstErr;
+        }
+      }
 
       if (isComponentMounted.current) {
         setIsScanning(true);
