@@ -20,9 +20,17 @@ import { playSound } from '../utils/sound';
 
 interface BarcodeScannerModalProps {
   onClose: () => void;
+  onScanCode?: (code: string) => void;
+  title?: string;
+  subtitle?: string;
 }
 
-export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ onClose }) => {
+export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
+  onClose,
+  onScanCode,
+  title,
+  subtitle,
+}) => {
   const { products, addToCart, storeInfo } = usePos();
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualCode, setManualCode] = useState('');
@@ -66,6 +74,17 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ onClos
     setLastScannedTime(now);
     setScannedCode(decodedText);
     playSound('beep');
+
+    if (onScanCode) {
+      setAddedSuccess(true);
+      setTimeout(() => {
+        if (isComponentMounted.current) {
+          onScanCode(decodedText);
+          onClose();
+        }
+      }, 350);
+      return;
+    }
 
     const matched = findProductByCode(decodedText);
     if (matched) {
@@ -217,8 +236,14 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ onClos
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualCode.trim()) return;
-    handleBarcodeDetected(manualCode.trim());
+    const code = manualCode.trim();
+    if (!code) return;
+    if (onScanCode) {
+      onScanCode(code);
+      onClose();
+      return;
+    }
+    handleBarcodeDetected(code);
     setManualCode('');
   };
 
@@ -234,10 +259,10 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ onClos
             </div>
             <div>
               <h3 className="font-bold text-sm text-slate-900">
-                QR & Barcode Scanner
+                {title || 'QR & Barcode Scanner'}
               </h3>
               <p className="text-[11px] text-slate-500">
-                স্ক্যান করে কার্টে যোগ করুন
+                {subtitle || (onScanCode ? 'বারকোড স্ক্যান করে ফর্মে ইনপুট দিন' : 'স্ক্যান করে কার্টে যোগ করুন')}
               </p>
             </div>
           </div>
@@ -436,7 +461,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ onClos
 
         {/* Minimal Footer */}
         <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-          <span>পণ্য স্ক্যান হলে বিস্তারিত দেখে কার্টে যোগ করুন</span>
+          <span>{onScanCode ? 'বারকোড রিড হলে স্বয়ংক্রিয়ভাবে ইনপুটে সেট হবে' : 'পণ্য স্ক্যান হলে বিস্তারিত দেখে কার্টে যোগ করুন'}</span>
           <button
             type="button"
             onClick={onClose}

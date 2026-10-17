@@ -1517,6 +1517,9 @@ export const ProductsScreen: React.FC = () => {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
       {/* BARCODE SCANNER MODAL FOR PRODUCT FORM */}
       {scannerModalOpen && (
         <BarcodeScannerModal
