@@ -11,6 +11,8 @@ import {
   Minus,
   RotateCcw,
   Search,
+  Zap,
+  ZapOff,
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { usePos } from '../context/PosContext';
@@ -39,6 +41,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [torchOn, setTorchOn] = useState(false);
 
   // Scanned item state
   const [scannedCode, setScannedCode] = useState<string | null>(null);
@@ -138,14 +141,22 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
       scannerRef.current = html5QrCode;
 
+      // Dynamic wide scan box that prevents cutting off 1D barcode quiet zones
       const config = {
-        fps: 20,
-        qrbox: { width: 280, height: 140 },
-        aspectRatio: 1.333,
+        fps: 25,
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const width = Math.min(viewfinderWidth - 12, Math.max(260, Math.floor(viewfinderWidth * 0.94)));
+          const height = Math.min(viewfinderHeight - 12, Math.max(160, Math.floor(viewfinderHeight * 0.88)));
+          return { width, height };
+        },
       };
 
       await html5QrCode.start(
-        { facingMode: facingMode },
+        {
+          facingMode: { ideal: facingMode },
+          width: { min: 640, ideal: 1280 },
+          height: { min: 480, ideal: 720 },
+        },
         config,
         (decodedText) => {
           if (isComponentMounted.current) {
@@ -208,7 +219,22 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   }, [facingMode]);
 
   const handleToggleCamera = () => {
+    setTorchOn(false);
     setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
+  };
+
+  const handleToggleTorch = async () => {
+    const scanner = scannerRef.current;
+    if (!scanner) return;
+    try {
+      const next = !torchOn;
+      await scanner.applyVideoConstraints({
+        advanced: [{ torch: next } as any],
+      });
+      setTorchOn(next);
+    } catch (e) {
+      console.warn('Torch toggle not supported or failed:', e);
+    }
   };
 
   // Add detected product to cart on explicit user click
@@ -270,9 +296,19 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           <div className="flex items-center gap-1">
             <button
               type="button"
+              onClick={handleToggleTorch}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                torchOn ? 'text-amber-500 bg-amber-50 border border-amber-200' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+              }`}
+              title={torchOn ? 'ফ্ল্যাশলাইট বন্ধ করুন' : 'ফ্ল্যাশলাইট চালু করুন'}
+            >
+              {torchOn ? <Zap className="w-4 h-4 fill-amber-500" /> : <ZapOff className="w-4 h-4" />}
+            </button>
+            <button
+              type="button"
               onClick={handleToggleCamera}
               className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-              title="Flip camera"
+              title="ক্যামেরা পরিবর্তন করুন"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -290,23 +326,23 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         {/* Viewport / Main Content */}
         <div className="p-4 overflow-y-auto space-y-3 flex-1">
           {/* Camera Viewfinder */}
-          <div className="relative rounded-xl overflow-hidden bg-slate-950 aspect-4/3 max-h-56 flex items-center justify-center border border-slate-200">
+          <div className="relative rounded-2xl overflow-hidden bg-slate-950 min-h-[250px] sm:min-h-[280px] flex items-center justify-center border border-slate-200">
             <div id="barcode-camera-reader" className="w-full h-full object-cover" />
 
             {/* Subtle Viewfinder Frame */}
             {isScanning && !cameraError && (
-              <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-                <div className="w-52 h-28 border-2 border-blue-400/80 rounded-xl relative">
-                  <div className="absolute -top-0.5 -left-0.5 w-4 h-4 border-t-2 border-l-2 border-white rounded-tl-sm" />
-                  <div className="absolute -top-0.5 -right-0.5 w-4 h-4 border-t-2 border-r-2 border-white rounded-tr-sm" />
-                  <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 border-b-2 border-l-2 border-white rounded-bl-sm" />
-                  <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 border-b-2 border-r-2 border-white rounded-br-sm" />
+              <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-3">
+                <div className="w-[88%] max-w-sm h-36 sm:h-40 border-2 border-blue-400/90 rounded-2xl relative shadow-lg shadow-blue-500/10">
+                  <div className="absolute -top-1 -left-1 w-5 h-5 border-t-3 border-l-3 border-white rounded-tl-md" />
+                  <div className="absolute -top-1 -right-1 w-5 h-5 border-t-3 border-r-3 border-white rounded-tr-md" />
+                  <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-3 border-l-3 border-white rounded-bl-md" />
+                  <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-3 border-r-3 border-white rounded-br-md" />
                   
                   {/* Subtle red laser scan indicator */}
-                  <div className="w-full h-0.5 bg-red-500/70 absolute top-1/2 -translate-y-1/2 animate-pulse" />
+                  <div className="w-full h-0.5 bg-red-500/80 absolute top-1/2 -translate-y-1/2 animate-pulse shadow-sm shadow-red-500" />
                 </div>
-                <span className="mt-2 text-[10px] text-white/80 bg-black/50 px-2.5 py-0.5 rounded-full font-medium">
-                  বারকোড ফ্রেমের মাঝে রাখুন
+                <span className="mt-2.5 text-[10px] text-white/90 bg-black/60 px-3 py-1 rounded-full font-medium backdrop-blur-xs">
+                  বারকোড ফ্রেমের ভেতরে ধরুন
                 </span>
               </div>
             )}
