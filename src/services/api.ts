@@ -11,19 +11,61 @@ function formatBaseUrl(raw: string): string {
   return `https://${trimmed}`;
 }
 
-// Support Render / standalone deployment where backend is on a separate domain
-const API_BASE_URL = formatBaseUrl(typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL ? String(import.meta.env.VITE_API_URL) : '');
-
 export function getApiBaseUrl(): string {
-  return API_BASE_URL;
+  // 1. Check custom override saved in localStorage
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const custom = localStorage.getItem('shoppos_custom_api_url');
+      if (custom && custom.trim()) {
+        return formatBaseUrl(custom);
+      }
+    }
+  } catch {}
+
+  // 2. Vite environment variable baked during build
+  const envUrl =
+    typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL
+      ? String(import.meta.env.VITE_API_URL).trim()
+      : '';
+  if (envUrl) {
+    return formatBaseUrl(envUrl);
+  }
+
+  // 3. Automatic Render sub-domain matching:
+  // If static site is https://<project>-owner.onrender.com
+  // try to connect to https://<project>-backend.onrender.com automatically
+  if (typeof window !== 'undefined' && window.location.hostname.endsWith('.onrender.com')) {
+    const host = window.location.hostname;
+    if (host.includes('-owner.')) {
+      return `https://${host.replace('-owner.', '-backend.')}`;
+    }
+    if (host.includes('owner.')) {
+      return `https://${host.replace('owner.', 'backend.')}`;
+    }
+  }
+
+  return '';
 }
 
-function resolveApiUrl(endpoint: string): string {
+export function setCustomApiUrl(url: string | null) {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      if (url && url.trim()) {
+        localStorage.setItem('shoppos_custom_api_url', url.trim());
+      } else {
+        localStorage.removeItem('shoppos_custom_api_url');
+      }
+    }
+  } catch {}
+}
+
+export function resolveApiUrl(endpoint: string): string {
   if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
     return endpoint;
   }
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  return `${API_BASE_URL}${cleanEndpoint}`;
+  const baseUrl = getApiBaseUrl();
+  return baseUrl ? `${baseUrl}${cleanEndpoint}` : cleanEndpoint;
 }
 
 export function getStoredToken(): string | null {

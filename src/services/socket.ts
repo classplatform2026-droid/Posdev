@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { StoreSubscription } from '../types';
+import { getApiBaseUrl } from './api';
 
 let socket: Socket | null = null;
 let currentToken: string | null = null;
@@ -29,11 +30,8 @@ export function connectSocket(token: string) {
   }
 
   currentToken = token;
-  const rawApiUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL ? String(import.meta.env.VITE_API_URL) : '').trim().replace(/\/$/, '');
-  const envApiUrl = rawApiUrl
-    ? (rawApiUrl.startsWith('http://') || rawApiUrl.startsWith('https://') ? rawApiUrl : `https://${rawApiUrl}`)
-    : '';
-  const url = envApiUrl || (typeof window !== 'undefined' ? window.location.origin : '');
+  const baseUrl = getApiBaseUrl();
+  const url = baseUrl || (typeof window !== 'undefined' ? window.location.origin : '');
 
   socket = io(url, {
     auth: { token },

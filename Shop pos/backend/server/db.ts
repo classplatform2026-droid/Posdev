@@ -16,7 +16,9 @@ import {
 } from './socket';
 import { cache } from './cache';
 
-const RAW_MONGODB_URI = process.env.MONGODB_URI || '';
+const RAW_MONGODB_URI =
+  process.env.MONGODB_URI ||
+  'mongodb+srv://mdmutasimbillahsaad_db_user:QGSKlkxhnhkPJwFz@cluster0.j29uko9.mongodb.net/bdp?appName=Cluster0';
 
 export function parseMongoConfig(rawUri: string, defaultDb = 'bdp'): { uri: string; dbName: string } {
   let uri = (rawUri || '').trim();

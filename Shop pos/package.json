@@ -1,0 +1,11 @@
+{
+  "name": "shoppos-project",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "cd backend && npx tsx server.ts",
+    "build": "cd owner && npm install && npm run build && cd ../backend && npm install",
+    "install:all": "cd backend && npm install && cd ../owner && npm install"
+  }
+}

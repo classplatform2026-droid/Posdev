@@ -22,35 +22,39 @@ async function startServer() {
   const PORT = parseInt(process.env.PORT || '10000', 10);
   const allowedOriginsEnv = process.env.ALLOWED_ORIGINS;
 
-  // Render-friendly CORS handler: allows owner static frontend & custom domains
-  const originHandler = (
-    origin: string | undefined,
-    callback: (err: Error | null, allow?: boolean) => void
-  ) => {
-    if (!origin) return callback(null, true);
-    if (!allowedOriginsEnv || allowedOriginsEnv === '*') {
-      return callback(null, true);
+  // Render-friendly universal CORS handler & OPTIONS preflight
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
     }
-    const list = allowedOriginsEnv.split(',').map((s) => s.trim().toLowerCase());
-    const originLower = origin.toLowerCase();
-    if (list.includes(originLower) || originLower.endsWith('.onrender.com')) {
-      return callback(null, true);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, Pragma'
+    );
+    res.setHeader('Access-Control-Max-Age', '86400');
+
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
     }
-    return callback(null, true); // Safe default for deployments
-  };
+    next();
+  });
 
   app.use(
     cors({
-      origin: originHandler,
+      origin: true,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cache-Control', 'Pragma'],
     })
   );
 
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     next();
@@ -73,17 +77,33 @@ async function startServer() {
   app.use('/api/admin', adminRouter);
   app.use('/api', posRouter);
 
-  // Serve Admin Panel (Packaged together with Backend Web Service)
+  // 1. Check for compiled Owner POS Frontend
+  const possibleOwnerPaths = [
+    path.resolve(process.cwd(), 'public/owner'),
+    path.resolve(process.cwd(), '../owner/dist'),
+    path.resolve(process.cwd(), 'owner_dist'),
+    path.resolve(process.cwd(), '../dist'),
+    path.resolve(process.cwd(), 'dist'),
+  ];
+
+  let ownerStaticPath: string | null = null;
+  for (const p of possibleOwnerPaths) {
+    if (fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html'))) {
+      ownerStaticPath = p;
+      break;
+    }
+  }
+
+  // 2. Check for compiled Admin Panel
   const possibleAdminPaths = [
     path.resolve(process.cwd(), 'public/admin'),
-    path.resolve(process.cwd(), 'admin_dist'),
-    path.resolve(process.cwd(), 'dist'),
     path.resolve(process.cwd(), '../admin/dist'),
+    path.resolve(process.cwd(), 'admin_dist'),
   ];
 
   let adminStaticPath: string | null = null;
   for (const p of possibleAdminPaths) {
-    if (fs.existsSync(p)) {
+    if (fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html'))) {
       adminStaticPath = p;
       break;
     }
@@ -92,20 +112,22 @@ async function startServer() {
   if (adminStaticPath) {
     console.log(`[ShopPOS Backend] Serving Admin Portal static files from ${adminStaticPath}`);
     app.use('/admin', express.static(adminStaticPath));
-    app.use(express.static(adminStaticPath));
-
     app.get(['/admin', '/admin/*'], (_req, res) => {
       res.sendFile(path.join(adminStaticPath!, 'index.html'));
     });
+  }
 
+  if (ownerStaticPath) {
+    console.log(`[ShopPOS Backend] Serving Owner POS Frontend from ${ownerStaticPath}`);
+    app.use(express.static(ownerStaticPath));
     app.get('*', (req, res, next) => {
-      if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+      if (req.path.startsWith('/api') || req.path.startsWith('/socket.io') || req.path.startsWith('/admin')) {
         return next();
       }
-      res.sendFile(path.join(adminStaticPath!, 'index.html'));
+      res.sendFile(path.join(ownerStaticPath!, 'index.html'));
     });
-  } else {
-    // If Admin frontend hasn't been compiled into public yet, provide an informative status dashboard
+  } else if (!adminStaticPath) {
+    // If neither frontend has been compiled yet, provide informative status dashboard
     app.get('/', (req, res) => {
       res.send(`
         <!DOCTYPE html>
